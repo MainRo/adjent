@@ -1,0 +1,376 @@
+openapi: 3.0.3
+info:
+  title: Adjent API
+  description: API for Adjent, an orchestrator for agents with human in the loop.
+  version: 0.1.0
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+paths:
+  /projects:
+    get:
+      summary: List all projects
+      responses:
+        '200':
+          description: A list of projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Project'
+    post:
+      summary: Create a new project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectCreate'
+      responses:
+        '201':
+          description: Project created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+
+  /projects/{projectId}:
+    get:
+      summary: Get project details
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: myProject
+      responses:
+        '200':
+          description: Project details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+
+  /projects/{projectId}/tasks:
+    get:
+      summary: List tasks for a project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: myProject
+      responses:
+        '200':
+          description: A list of tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Task'
+    post:
+      summary: Create a new task in a project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: myProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskCreate'
+      responses:
+        '201':
+          description: Task created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+
+  /projects/{projectId}/tasks/{taskId}:
+    get:
+      summary: Get task details
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: myProject
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: 20260302-foo
+      responses:
+        '200':
+          description: Task details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+
+  /projects/{projectId}/tasks/{taskId}/rounds:
+    get:
+      summary: List rounds for a task
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: myProject
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: 20260302-foo
+      responses:
+        '200':
+          description: A list of rounds
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Round'
+    post:
+      summary: Create a new round
+      description: >
+        Creates a new round. If `fromRoundId` is provided, the new round is initialized
+        from the output of the specified round (bump).
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: myProject
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: 20260302-foo
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fromRoundId:
+                  type: string
+                  description: Optional round ID to initialize the new round from (bump).
+      responses:
+        '201':
+          description: New round created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Round'
+
+  /projects/{projectId}/tasks/{taskId}/rounds/{roundId}/artifacts/{type}:
+    get:
+      summary: List artifacts of a specific type (inputs, outputs, logs)
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: myProject
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: 20260302-foo
+        - name: roundId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [inputs, outputs, logs]
+      responses:
+        '200':
+          description: A list of artifacts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+    post:
+      summary: Upload an artifact to a round
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: myProject
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: 20260302-foo
+        - name: roundId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [inputs, outputs, logs]
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                filename:
+                  type: string
+      responses:
+        '200':
+          description: Artifact uploaded
+
+  /projects/{projectId}/tasks/{taskId}/rounds/{roundId}/artifacts/{type}/{filename}:
+    get:
+      summary: Download a specific artifact
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: myProject
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: 20260302-foo
+        - name: roundId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [inputs, outputs, logs]
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The artifact file
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
+  /projects/{projectId}/tasks/{taskId}/rounds/{roundId}/do:
+    post:
+      summary: Schedule the round for work
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: myProject
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: 20260302-foo
+        - name: roundId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                  enum: [plan, implement, review]
+      responses:
+        '202':
+          description: Action scheduled
+
+components:
+  schemas:
+    Project:
+      type: object
+      properties:
+        id:
+          type: string
+          example: myProject
+    ProjectCreate:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          example: myProject
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Format YYYYMMDD-name
+          example: 20260302-foo
+        name:
+          type: string
+          example: foo
+    TaskCreate:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          example: foo
+    Round:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]

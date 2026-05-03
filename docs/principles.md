@@ -23,7 +23,9 @@ state/projects/[project-id]/tasks/[task-id]/rounds/[round-id]/
 
 # Artifacts store
 
-The artifacts store contains all the files referenced by the tasks. It supports several backends:
+The artifacts store contains all the files referenced by the tasks, categorized into `inputs`, `outputs`, and `logs`. It supports several backends:
 
 - A local file storage when the state database is also a local storage.
 - An object storage like s3.
+
+While the CLI focuses on human-provided `inputs`, the Web API supports management of all artifact types to allow agents (via the MCP server) to update `outputs` and `logs`.
