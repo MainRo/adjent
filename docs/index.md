@@ -11,3 +11,5 @@ It is composed of several parts:
 Detailed information on the CLI tool are in [cli](cli.md)
 
 The whole project is implemented in rust, as a single executable file that acts as one of the components (web-server, cli, MCP server) depending on how it is being called. 
+
+When started as a server, adjent acts both as an HTTP server and an MCP server.

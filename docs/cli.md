@@ -57,7 +57,7 @@ action is one of the supported skill of the agent listening for incoming work:
 
 Mark the round as ready to be processed by an agent. 
 
-## HTTP server
+## server
 
 ### Start the server
 
@@ -65,7 +65,7 @@ Mark the round as ready to be processed by an agent.
 adjent server start -p port
 ```
 
-starts the adjent HTTP server. 
+starts the adjent HTTP and MCP server. 
 The server default configuration is read from ADJENT_HOME/adjent-config.toml
 
 ### Stop the server
@@ -73,12 +73,3 @@ The server default configuration is read from ADJENT_HOME/adjent-config.toml
 ```
 adjent server stop
 ```
-
-## MCP server
-
-```
-adjent mcp start -u [adjent-endpoint] -p [project-id]
-```
-
-Starts the MCP server in stdio mode. The server must be provided with the HTTP API endpoint of the adjent server, and the project-id to listen to.
-
