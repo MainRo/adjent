@@ -332,6 +332,34 @@ paths:
         '202':
           description: Action scheduled
 
+  /mcp:
+    get:
+      summary: MCP SSE connection
+      description: Establishes a Server-Sent Events (SSE) connection for the Model Context Protocol.
+      responses:
+        '200':
+          description: SSE connection established
+          content:
+            text/event-stream:
+              schema:
+                type: string
+    post:
+      summary: MCP Message
+      description: Sends a message to the MCP server via JSON-RPC.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Message received
+          content:
+            application/json:
+              schema:
+                type: object
+
 components:
   schemas:
     Project:
