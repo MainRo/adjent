@@ -1,15 +1,9 @@
 
+This document explains the principles of the different design elements of adjent.
 
 
-# State database
 
-The state database contains the list of projects, tasks, and rounds. The state database supports several backends:
-
-- A local file storage. Its location is in the ADJENT_HOME/state
-- An SQL database, like postgresql
-
-
-## Local file storage
+# Local state
 
 ```
 state/projects/[project-id]/tasks/[task-id]/rounds/[round-id]/
@@ -20,6 +14,19 @@ state/projects/[project-id]/tasks/[task-id]/rounds/[round-id]/
                                                              /outputs/plan.md
                                                              /logs/
 ```
+
+
+# Remote State
+
+The state database contains the list of projects, tasks, and rounds. The state database supports several backends:
+
+- A local file storage. Its location is in the ADJENT_HOME/state
+- An SQL database, like postgresql
+
+
+## Local file storage
+
+
 
 # Artifacts store
 
