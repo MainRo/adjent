@@ -1,6 +1,8 @@
 mod cli;
 mod server;
 mod mcp;
+mod config;
+mod storage;
 
 #[tokio::main]
 async fn main() {

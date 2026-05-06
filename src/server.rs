@@ -1,11 +1,15 @@
 use axum::{
-    extract::{Path, Multipart},
+    extract::{Path, Multipart, State},
     routing::{get, post},
     Json, Router,
+    http::StatusCode,
 };
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
-use tracing::info;
+use std::sync::Arc;
+use tracing::{info, error};
+use crate::storage::LocalStorage;
+use crate::config::get_adjent_home;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Project {
@@ -44,7 +48,15 @@ pub struct ActionRequest {
     pub action: String,
 }
 
+pub struct AppState {
+    pub storage: LocalStorage,
+}
+
 pub async fn start(port: u16) -> Result<(), Box<dyn std::error::Error>> {
+    let home = get_adjent_home();
+    let storage = LocalStorage::new(home);
+    let state = Arc::new(AppState { storage });
+
     let app = Router::new()
         .route("/projects", get(list_projects).post(create_project))
         .route("/projects/:projectId", get(get_project))
@@ -54,7 +66,8 @@ pub async fn start(port: u16) -> Result<(), Box<dyn std::error::Error>> {
         .route("/projects/:projectId/tasks/:taskId/rounds/:roundId/artifacts/:type", get(list_artifacts).post(upload_artifact))
         .route("/projects/:projectId/tasks/:taskId/rounds/:roundId/artifacts/:type/:filename", get(download_artifact))
         .route("/projects/:projectId/tasks/:taskId/rounds/:roundId/do", post(do_action))
-        .route("/mcp", get(crate::mcp::mcp_sse_handler).post(crate::mcp::mcp_post_handler));
+        .route("/mcp", get(crate::mcp::mcp_sse_handler).post(crate::mcp::mcp_post_handler))
+        .with_state(state);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     info!("listening on {}", addr);
@@ -64,15 +77,33 @@ pub async fn start(port: u16) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn list_projects() -> Json<Vec<Project>> {
-    Json(vec![Project { id: "myProject".into() }])
+async fn list_projects(State(state): State<Arc<AppState>>) -> Result<Json<Vec<Project>>, StatusCode> {
+    match state.storage.list_projects() {
+        Ok(ids) => Ok(Json(ids.into_iter().map(|id| Project { id }).collect())),
+        Err(e) => {
+            error!("Failed to list projects: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
-async fn create_project(Json(payload): Json<ProjectCreate>) -> (axum::http::StatusCode, Json<Project>) {
-    (axum::http::StatusCode::CREATED, Json(Project { id: payload.id }))
+async fn create_project(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<ProjectCreate>,
+) -> Result<(StatusCode, Json<Project>), StatusCode> {
+    match state.storage.create_project(&payload.id) {
+        Ok(_) => Ok((StatusCode::CREATED, Json(Project { id: payload.id }))),
+        Err(e) => {
+            error!("Failed to create project: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
-async fn get_project(Path(project_id): Path<String>) -> Json<Project> {
+async fn get_project(
+    State(_state): State<Arc<AppState>>,
+    Path(project_id): Path<String>,
+) -> Json<Project> {
     Json(Project { id: project_id })
 }
 
