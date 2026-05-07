@@ -16,6 +16,10 @@ impl LocalStorage {
         self.root.join("state").join("projects")
     }
 
+    fn tasks_dir(&self, project_id: &str) -> PathBuf {
+        self.projects_dir().join(project_id).join("tasks")
+    }
+
     pub fn list_projects(&self) -> Result<Vec<String>> {
         let path = self.projects_dir();
         if !path.exists() {
@@ -36,6 +40,29 @@ impl LocalStorage {
 
     pub fn create_project(&self, id: &str) -> Result<()> {
         let path = self.projects_dir().join(id);
+        fs::create_dir_all(path)?;
+        Ok(())
+    }
+
+    pub fn list_tasks(&self, project_id: &str) -> Result<Vec<String>> {
+        let path = self.tasks_dir(project_id);
+        if !path.exists() {
+            return Ok(vec![]);
+        }
+        let mut tasks = vec![];
+        for entry in fs::read_dir(path)? {
+            let entry = entry?;
+            if entry.file_type()?.is_dir() {
+                if let Some(name) = entry.file_name().to_str() {
+                    tasks.push(name.to_string());
+                }
+            }
+        }
+        Ok(tasks)
+    }
+
+    pub fn create_task(&self, project_id: &str, task_id: &str) -> Result<()> {
+        let path = self.tasks_dir(project_id).join(task_id);
         fs::create_dir_all(path)?;
         Ok(())
     }
@@ -93,6 +120,17 @@ mod tests {
         storage.save_active_context(&ctx)?;
         let loaded = storage.get_active_context()?;
         assert_eq!(loaded, ctx);
+        Ok(())
+    }
+
+    #[test]
+    fn test_create_and_list_tasks() -> Result<()> {
+        let dir = tempdir()?;
+        let storage = LocalStorage::new(dir.path().to_path_buf());
+        storage.create_project("p1")?;
+        storage.create_task("p1", "t1")?;
+        let tasks = storage.list_tasks("p1")?;
+        assert_eq!(tasks, vec!["t1".to_string()]);
         Ok(())
     }
 }

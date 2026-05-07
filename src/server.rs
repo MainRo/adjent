@@ -10,6 +10,7 @@ use std::sync::Arc;
 use tracing::{info, error};
 use crate::storage::LocalStorage;
 use crate::config::get_adjent_home;
+use chrono::Local;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Project {
@@ -107,16 +108,45 @@ async fn get_project(
     Json(Project { id: project_id })
 }
 
-async fn list_tasks(Path(_project_id): Path<String>) -> Json<Vec<Task>> {
-    Json(vec![Task { id: "20260302-foo".into(), name: "foo".into() }])
+async fn list_tasks(
+    State(state): State<Arc<AppState>>,
+    Path(project_id): Path<String>,
+) -> Result<Json<Vec<Task>>, StatusCode> {
+    match state.storage.list_tasks(&project_id) {
+        Ok(ids) => Ok(Json(ids.into_iter().map(|id| {
+            let name = id.splitn(2, '-').nth(1).unwrap_or(&id).to_string();
+            Task { id, name }
+        }).collect())),
+        Err(e) => {
+            error!("Failed to list tasks: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
-async fn create_task(Path(_project_id): Path<String>, Json(payload): Json<TaskCreate>) -> (axum::http::StatusCode, Json<Task>) {
-    (axum::http::StatusCode::CREATED, Json(Task { id: format!("20260302-{}", payload.name), name: payload.name }))
+async fn create_task(
+    State(state): State<Arc<AppState>>,
+    Path(project_id): Path<String>,
+    Json(payload): Json<TaskCreate>,
+) -> Result<(StatusCode, Json<Task>), StatusCode> {
+    let prefix = Local::now().format("%Y%m%d").to_string();
+    let task_id = format!("{}-{}", prefix, payload.name);
+    
+    match state.storage.create_task(&project_id, &task_id) {
+        Ok(_) => Ok((StatusCode::CREATED, Json(Task { id: task_id, name: payload.name }))),
+        Err(e) => {
+            error!("Failed to create task: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
-async fn get_task(Path((_project_id, task_id)): Path<(String, String)>) -> Json<Task> {
-    Json(Task { id: task_id.clone(), name: task_id })
+async fn get_task(
+    State(_state): State<Arc<AppState>>,
+    Path((_project_id, task_id)): Path<(String, String)>,
+) -> Json<Task> {
+    let name = task_id.splitn(2, '-').nth(1).unwrap_or(&task_id).to_string();
+    Json(Task { id: task_id, name })
 }
 
 async fn list_rounds(Path((_project_id, _task_id)): Path<(String, String)>) -> Json<Vec<Round>> {

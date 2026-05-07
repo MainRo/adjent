@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use reqwest::Client;
 use crate::config::{get_adjent_home, detect_context, Context};
 use crate::storage::LocalStorage;
-use crate::server::{Project, ProjectCreate};
+use crate::server::{Project, ProjectCreate, Task, TaskCreate};
 use anyhow::Result;
 
 #[derive(Parser)]
@@ -158,8 +158,25 @@ pub async fn run() -> Result<()> {
             let context = ctx.resolve_context(args.project_id, None, None)?;
             let p_id = context.project.expect("Project ID is required");
             match args.command {
-                TaskCommand::List => println!("Listing tasks for project: {}", p_id),
-                TaskCommand::Create { id } => println!("Creating task: {} in project: {}", id, p_id),
+                TaskCommand::List => {
+                    let res = ctx.client.get(format!("{}/projects/{}/tasks", base_url, p_id)).send().await?;
+                    let tasks: Vec<Task> = res.json().await?;
+                    println!("Tasks for project {}:", p_id);
+                    for t in tasks {
+                        println!("- {}", t.id);
+                    }
+                },
+                TaskCommand::Create { id } => {
+                    let res = ctx.client.post(format!("{}/projects/{}/tasks", base_url, p_id))
+                        .json(&TaskCreate { name: id.clone() })
+                        .send().await?;
+                    if res.status().is_success() {
+                        let task: Task = res.json().await?;
+                        println!("Task created: {}", task.id);
+                    } else {
+                        eprintln!("Failed to create task: {}", res.status());
+                    }
+                },
                 TaskCommand::Activate { id } => {
                     let mut current = ctx.storage.get_active_context().unwrap_or_default();
                     current.project = Some(p_id);
