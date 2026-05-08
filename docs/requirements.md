@@ -3,10 +3,10 @@
 
 ## Project id format
 
-The project id can be composed only of ascii alphanumerc characters. The first
+The project id can be composed only of ascii alphanumeric characters. The first
 character must be a letter.
 
-When a project is created, the user provides this id.
+When a project is created, the user provides this id
 
 
 # Tasks
