@@ -55,14 +55,22 @@ adjent task -p [project-id] create [task-id]
 adjent round -p [project-id] -t [task-id] activate [round-id]
 ````
 
-### bump to a new round
+### bumps round to next one
 
 ```
 adjent round -p [project-id] -t [task-id] bump --from [round-id]
 ```
 
-The --from argument is optional, and used only to start a new branch from a specific round.
-This command automatically activates the new created round.
+The --from argument is optional. When not provided, the current round is used as the source.
+When no round exists, then round 0 is created.
+
+Bumping a round creates a new round where the id is increaded by 1. 
+Moreover:
+
+- The "inputs", "outputs", and "logs" artifacts directory are created in the new round.
+- The input artifacts of the current round are copied as input artifacts of the new round
+- The outputs artifacts of the current round are copied as input artifacts of the new round, overriding any existing file from the previous step.
+- An empty input artifact named "instructions.md" is created (or overrided when it already exists)
 
 ```
 adjent round -p [project-id] -t [task-id]  -r [round-id] add input [artifact]

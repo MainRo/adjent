@@ -149,12 +149,31 @@ async fn get_task(
     Json(Task { id: task_id, name })
 }
 
-async fn list_rounds(Path((_project_id, _task_id)): Path<(String, String)>) -> Json<Vec<Round>> {
-    Json(vec![Round { id: "round-1".into(), status: "completed".into() }])
+async fn list_rounds(
+    State(state): State<Arc<AppState>>,
+    Path((project_id, task_id)): Path<(String, String)>
+) -> Result<Json<Vec<Round>>, StatusCode> {
+    match state.storage.list_rounds(&project_id, &task_id) {
+        Ok(ids) => Ok(Json(ids.into_iter().map(|id| Round { id, status: "active".into() }).collect())),
+        Err(e) => {
+            error!("Failed to list rounds: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
-async fn create_round(Path((_project_id, _task_id)): Path<(String, String)>, Json(_payload): Json<RoundCreate>) -> (axum::http::StatusCode, Json<Round>) {
-    (axum::http::StatusCode::CREATED, Json(Round { id: "round-2".into(), status: "pending".into() }))
+async fn create_round(
+    State(state): State<Arc<AppState>>,
+    Path((project_id, task_id)): Path<(String, String)>,
+    Json(payload): Json<RoundCreate>
+) -> Result<(StatusCode, Json<Round>), StatusCode> {
+    match state.storage.bump_round(&project_id, &task_id, payload.from_round_id) {
+        Ok(id) => Ok((StatusCode::CREATED, Json(Round { id, status: "pending".into() }))),
+        Err(e) => {
+            error!("Failed to bump round: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 async fn list_artifacts(Path((_project_id, _task_id, _round_id, _artifact_type)): Path<(String, String, String, String)>) -> Json<Vec<String>> {

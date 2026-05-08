@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use reqwest::Client;
 use crate::config::{get_adjent_home, detect_context, Context};
 use crate::storage::LocalStorage;
-use crate::server::{Project, ProjectCreate, Task, TaskCreate};
+use crate::server::{Project, ProjectCreate, Task, TaskCreate, Round, RoundCreate, ActionRequest};
 use anyhow::Result;
 
 #[derive(Parser)]
@@ -131,9 +131,14 @@ pub async fn run() -> Result<()> {
             ProjectCommand::List => {
                 let res = ctx.client.get(format!("{}/projects", base_url)).send().await?;
                 let projects: Vec<Project> = res.json().await?;
+                let active_ctx = ctx.storage.get_active_context().unwrap_or_default();
+                let cwd = std::env::current_dir()?;
+                let cwd_ctx = detect_context(&cwd, &ctx.home);
+
                 println!("Projects:");
                 for p in projects {
-                    println!("- {}", p.id);
+                    let is_active = Some(&p.id) == active_ctx.project.as_ref() || Some(&p.id) == cwd_ctx.project.as_ref();
+                    println!("{} {}", if is_active { "*" } else { "-" }, p.id);
                 }
             },
             ProjectCommand::Create { id } => {
@@ -161,9 +166,14 @@ pub async fn run() -> Result<()> {
                 TaskCommand::List => {
                     let res = ctx.client.get(format!("{}/projects/{}/tasks", base_url, p_id)).send().await?;
                     let tasks: Vec<Task> = res.json().await?;
+                    let active_ctx = ctx.storage.get_active_context().unwrap_or_default();
+                    let cwd = std::env::current_dir()?;
+                    let cwd_ctx = detect_context(&cwd, &ctx.home);
+
                     println!("Tasks for project {}:", p_id);
                     for t in tasks {
-                        println!("- {}", t.id);
+                        let is_active = Some(&t.id) == active_ctx.task.as_ref() || Some(&t.id) == cwd_ctx.task.as_ref();
+                        println!("{} {}", if is_active { "*" } else { "-" }, t.id);
                     }
                 },
                 TaskCommand::Create { id } => {
@@ -199,11 +209,31 @@ pub async fn run() -> Result<()> {
                     ctx.storage.save_active_context(&current)?;
                     println!("Round activated: {}", id);
                 },
-                RoundCommand::Bump { from } => println!("Bumping round from: {:?} in project: {}, task: {}", from, p_id, t_id),
+                RoundCommand::Bump { from } => {
+                    let res = ctx.client.post(format!("{}/projects/{}/tasks/{}/rounds", base_url, p_id, t_id))
+                        .json(&RoundCreate { from_round_id: from })
+                        .send().await?;
+                    if res.status().is_success() {
+                        let round: Round = res.json().await?;
+                        println!("Round bumped: {}", round.id);
+                    } else {
+                        eprintln!("Failed to bump round: {}", res.status());
+                    }
+                },
                 RoundCommand::Add { item } => match item {
                     AddItem::Input { artifact } => println!("Adding input: {} to round in project: {}, task: {}", artifact, p_id, t_id),
                 },
-                RoundCommand::Do { action } => println!("Doing action: {} in project: {}, task: {}", action, p_id, t_id),
+                RoundCommand::Do { action } => {
+                    let r_id = context.round.expect("Round ID is required");
+                    let res = ctx.client.post(format!("{}/projects/{}/tasks/{}/rounds/{}/do", base_url, p_id, t_id, r_id))
+                        .json(&ActionRequest { action: action.clone() })
+                        .send().await?;
+                    if res.status().is_success() {
+                        println!("Action {} accepted", action);
+                    } else {
+                        eprintln!("Failed to do action: {}", res.status());
+                    }
+                },
             }
         },
         Command::Server(args) => match args.command {
