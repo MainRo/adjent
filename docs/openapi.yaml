@@ -332,6 +332,53 @@ paths:
         '202':
           description: Action scheduled
 
+  /projects/{projectId}/actions/next:
+    get:
+      summary: Get the next pending action and mark it as assigned
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The next action, or null if none
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Action'
+                  - type: 'string'
+                    nullable: true
+
+  /projects/{projectId}/actions/{actionId}/status:
+    post:
+      summary: Update the status of an action
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: actionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  $ref: '#/components/schemas/ActionStatus'
+      responses:
+        '200':
+          description: Status updated
+
   /mcp:
     get:
       summary: MCP SSE connection
@@ -402,3 +449,24 @@ components:
         status:
           type: string
           enum: [pending, processing, completed, failed]
+    Action:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        task_id:
+          type: string
+        round_id:
+          type: string
+        action:
+          type: string
+        status:
+          $ref: '#/components/schemas/ActionStatus'
+        created_at:
+          type: string
+          format: date-time
+    ActionStatus:
+      type: string
+      enum: [pending, assigned, running, completed, failed]

@@ -2,8 +2,14 @@ use clap::{Parser, Subcommand};
 use reqwest::Client;
 use crate::config::{get_adjent_home, detect_context, Context};
 use crate::storage::LocalStorage;
-use crate::server::{Project, ProjectCreate, Task, TaskCreate, Round, RoundCreate, ActionRequest};
+use crate::server::{
+    Project, ProjectCreate,
+    Task, TaskCreate,
+    Round, RoundCreate,
+    ActionRequest, Action, ActionStatus, ActionStatusUpdate
+};
 use anyhow::Result;
+use tracing::info;
 
 #[derive(Parser)]
 #[command(name = "adjent", about = "Adjent: An orchestrator for agents with human in the loop")]
@@ -18,6 +24,7 @@ pub enum Command {
     Task(TaskArgs),
     Round(RoundArgs),
     Server(ServerArgs),
+    Manage(ManageArgs),
 }
 
 #[derive(Parser)]
@@ -90,6 +97,14 @@ pub enum ServerCommand {
         port: u16,
     },
     Stop,
+}
+
+#[derive(Parser)]
+pub struct ManageArgs {
+    #[arg(short, long)]
+    pub project: Option<String>,
+    #[arg(short, long)]
+    pub agent: String,
 }
 
 pub struct CliContext {
@@ -243,7 +258,64 @@ pub async fn run() -> Result<()> {
             },
             ServerCommand::Stop => println!("Stopping server..."),
         },
+        Command::Manage(args) => {
+            run_manager(ctx, args, base_url).await?;
+        }
     }
 
     Ok(())
+}
+
+async fn run_manager(ctx: CliContext, args: ManageArgs, base_url: &str) -> Result<()> {
+    let project_id = ctx.resolve_context(args.project, None, None)?.project
+        .expect("Project ID is required");
+    
+    info!("Starting manager for project: {} with agent: {}", project_id, args.agent);
+
+    loop {
+        // Poll for next action
+        let res = ctx.client.get(format!("{}/projects/{}/actions/next", base_url, project_id))
+            .send().await?;
+        
+        if res.status().is_success() {
+            let action: Option<Action> = res.json().await?;
+            
+            if let Some(action) = action {
+                info!("Assigned action: {} ({})", action.id, action.action);
+                
+                // Update status to running
+                let _ = ctx.client.post(format!("{}/projects/{}/actions/{}/status", base_url, project_id, action.id))
+                    .json(&ActionStatusUpdate { status: ActionStatus::Running })
+                    .send().await?;
+
+                // Spawn agent
+                let success = spawn_agent(&action, &args.agent).await?;
+
+                // Update status to completed/failed
+                let status = if success { ActionStatus::Completed } else { ActionStatus::Failed };
+                let _ = ctx.client.post(format!("{}/projects/{}/actions/{}/status", base_url, project_id, action.id))
+                    .json(&ActionStatusUpdate { status })
+                    .send().await?;
+                
+                info!("Action {} {}", action.id, if success { "completed" } else { "failed" });
+            }
+        }
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+    }
+}
+
+async fn spawn_agent(action: &Action, agent_command: &str) -> Result<bool> {
+    let mut child = tokio::process::Command::new("sh")
+        .arg("-c")
+        .arg(agent_command)
+        .env("ADJENT_PROJECT_ID", &action.project_id)
+        .env("ADJENT_TASK_ID", &action.task_id)
+        .env("ADJENT_ROUND_ID", &action.round_id)
+        .env("ADJENT_ACTION_ID", &action.id)
+        .env("ADJENT_ACTION", &action.action)
+        .spawn()?;
+
+    let status = child.wait().await?;
+    Ok(status.success())
 }

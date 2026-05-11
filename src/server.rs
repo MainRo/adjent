@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tracing::{info, error};
-use crate::storage::LocalStorage;
+pub use crate::storage::{LocalStorage, Action, ActionStatus};
 use crate::config::get_adjent_home;
 use chrono::Local;
 
@@ -49,6 +49,11 @@ pub struct ActionRequest {
     pub action: String,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct ActionStatusUpdate {
+    pub status: ActionStatus,
+}
+
 pub struct AppState {
     pub storage: LocalStorage,
 }
@@ -67,6 +72,8 @@ pub async fn start(port: u16) -> Result<(), Box<dyn std::error::Error>> {
         .route("/projects/:projectId/tasks/:taskId/rounds/:roundId/artifacts/:type", get(list_artifacts).post(upload_artifact))
         .route("/projects/:projectId/tasks/:taskId/rounds/:roundId/artifacts/:type/:filename", get(download_artifact))
         .route("/projects/:projectId/tasks/:taskId/rounds/:roundId/do", post(do_action))
+        .route("/projects/:projectId/actions/next", get(get_next_action))
+        .route("/projects/:projectId/actions/:actionId/status", post(update_action_status))
         .route("/mcp", get(crate::mcp::mcp_sse_handler).post(crate::mcp::mcp_post_handler))
         .with_state(state);
 
@@ -188,6 +195,53 @@ async fn download_artifact(Path((_project_id, _task_id, _round_id, _artifact_typ
     "artifact content"
 }
 
-async fn do_action(Path((_project_id, _task_id, _round_id)): Path<(String, String, String)>, Json(_payload): Json<ActionRequest>) -> axum::http::StatusCode {
-    axum::http::StatusCode::ACCEPTED
+async fn do_action(
+    State(state): State<Arc<AppState>>,
+    Path((project_id, task_id, round_id)): Path<(String, String, String)>,
+    Json(payload): Json<ActionRequest>
+) -> Result<StatusCode, StatusCode> {
+    let action = Action {
+        id: uuid::Uuid::new_v4().to_string(),
+        project_id: project_id.clone(),
+        task_id: task_id.clone(),
+        round_id: round_id.clone(),
+        action: payload.action,
+        status: ActionStatus::Pending,
+        created_at: chrono::Utc::now(),
+    };
+
+    match state.storage.save_action(&project_id, &action) {
+        Ok(_) => Ok(StatusCode::ACCEPTED),
+        Err(e) => {
+            error!("Failed to save action: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+async fn get_next_action(
+    State(state): State<Arc<AppState>>,
+    Path(project_id): Path<String>,
+) -> Result<Json<Option<Action>>, StatusCode> {
+    match state.storage.get_and_assign_next_action(&project_id) {
+        Ok(action) => Ok(Json(action)),
+        Err(e) => {
+            error!("Failed to get next action: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+async fn update_action_status(
+    State(state): State<Arc<AppState>>,
+    Path((project_id, action_id)): Path<(String, String)>,
+    Json(payload): Json<ActionStatusUpdate>,
+) -> Result<StatusCode, StatusCode> {
+    match state.storage.update_action_status(&project_id, &action_id, payload.status) {
+        Ok(_) => Ok(StatusCode::OK),
+        Err(e) => {
+            error!("Failed to update action status: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }

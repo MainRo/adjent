@@ -2,6 +2,28 @@ use std::path::PathBuf;
 use std::fs;
 use anyhow::Result;
 use crate::config::Context;
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ActionStatus {
+    Pending,
+    Assigned,
+    Running,
+    Completed,
+    Failed,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Action {
+    pub id: String,
+    pub project_id: String,
+    pub task_id: String,
+    pub round_id: String,
+    pub action: String,
+    pub status: ActionStatus,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
 
 pub struct LocalStorage {
     root: PathBuf,
@@ -20,8 +42,70 @@ impl LocalStorage {
         self.projects_dir().join(project_id).join("tasks")
     }
 
+    fn actions_dir(&self, project_id: &str) -> PathBuf {
+        self.projects_dir().join(project_id).join("actions")
+    }
+
     fn rounds_dir(&self, project_id: &str, task_id: &str) -> PathBuf {
         self.tasks_dir(project_id).join(task_id).join("rounds")
+    }
+
+    pub fn save_action(&self, project_id: &str, action: &Action) -> Result<()> {
+        let dir = self.actions_dir(project_id);
+        fs::create_dir_all(&dir)?;
+        let path = dir.join(format!("{}.json", action.id));
+        let content = serde_json::to_string_pretty(action)?;
+        fs::write(path, content)?;
+        Ok(())
+    }
+
+    pub fn get_action(&self, project_id: &str, action_id: &str) -> Result<Option<Action>> {
+        let path = self.actions_dir(project_id).join(format!("{}.json", action_id));
+        if !path.exists() {
+            return Ok(None);
+        }
+        let content = fs::read_to_string(path)?;
+        let action = serde_json::from_str(&content)?;
+        Ok(Some(action))
+    }
+
+    pub fn update_action_status(&self, project_id: &str, action_id: &str, status: ActionStatus) -> Result<()> {
+        let mut action = self.get_action(project_id, action_id)?
+            .ok_or_else(|| anyhow::anyhow!("Action not found"))?;
+        action.status = status;
+        self.save_action(project_id, &action)?;
+        Ok(())
+    }
+
+    pub fn get_and_assign_next_action(&self, project_id: &str) -> Result<Option<Action>> {
+        let dir = self.actions_dir(project_id);
+        if !dir.exists() {
+            return Ok(None);
+        }
+
+        let mut entries: Vec<_> = fs::read_dir(dir)?
+            .filter_map(|e| e.ok())
+            .collect();
+        
+        // Sort by creation time (optional, but good for FIFO)
+        entries.sort_by_key(|e| e.metadata().and_then(|m| m.created()).ok());
+
+        for entry in entries {
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                let content = fs::read_to_string(&path)?;
+                let mut action: Action = serde_json::from_str(&content)?;
+                
+                if action.status == ActionStatus::Pending {
+                    action.status = ActionStatus::Assigned;
+                    let updated_content = serde_json::to_string_pretty(&action)?;
+                    fs::write(&path, updated_content)?;
+                    return Ok(Some(action));
+                }
+            }
+        }
+
+        Ok(None)
     }
 
     pub fn list_rounds(&self, project_id: &str, task_id: &str) -> Result<Vec<String>> {
