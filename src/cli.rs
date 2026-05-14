@@ -306,9 +306,10 @@ async fn run_manager(ctx: CliContext, args: ManageArgs, base_url: &str) -> Resul
 }
 
 async fn spawn_agent(action: &Action, agent_command: &str) -> Result<bool> {
+    let full_command = format!("{} /{}", agent_command, action.action);
     let mut child = tokio::process::Command::new("sh")
         .arg("-c")
-        .arg(agent_command)
+        .arg(full_command)
         .env("ADJENT_PROJECT_ID", &action.project_id)
         .env("ADJENT_TASK_ID", &action.task_id)
         .env("ADJENT_ROUND_ID", &action.round_id)
