@@ -3,6 +3,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
     http::StatusCode,
+    response::IntoResponse,
 };
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
@@ -11,6 +12,9 @@ use tracing::{info, error};
 pub use crate::storage::{LocalStorage, Action, ActionStatus};
 use crate::config::get_adjent_home;
 use chrono::Local;
+use crate::mcp::AdjentMcpServer;
+use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
+use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Project {
@@ -55,13 +59,23 @@ pub struct ActionStatusUpdate {
 }
 
 pub struct AppState {
-    pub storage: LocalStorage,
+    pub storage: Arc<LocalStorage>,
+    pub mcp_service: StreamableHttpService<AdjentMcpServer, LocalSessionManager>,
 }
 
 pub async fn start(port: u16) -> Result<(), Box<dyn std::error::Error>> {
     let home = get_adjent_home();
-    let storage = LocalStorage::new(home);
-    let state = Arc::new(AppState { storage });
+    let storage = Arc::new(LocalStorage::new(home));
+    let session_manager = Arc::new(LocalSessionManager::default());
+    
+    let storage_clone = storage.clone();
+    let mcp_service = StreamableHttpService::new(
+        move || Ok(AdjentMcpServer { storage: storage_clone.clone() }),
+        session_manager,
+        StreamableHttpServerConfig::default(),
+    );
+
+    let state = Arc::new(AppState { storage, mcp_service });
 
     let app = Router::new()
         .route("/projects", get(list_projects).post(create_project))
@@ -74,7 +88,7 @@ pub async fn start(port: u16) -> Result<(), Box<dyn std::error::Error>> {
         .route("/projects/:projectId/tasks/:taskId/rounds/:roundId/do", post(do_action))
         .route("/projects/:projectId/actions/next", get(get_next_action))
         .route("/projects/:projectId/actions/:actionId/status", post(update_action_status))
-        .route("/mcp", get(crate::mcp::mcp_sse_handler).post(crate::mcp::mcp_post_handler))
+        .route("/mcp", get(mcp_handler).post(mcp_handler).delete(mcp_handler))
         .with_state(state);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
@@ -83,6 +97,13 @@ pub async fn start(port: u16) -> Result<(), Box<dyn std::error::Error>> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+async fn mcp_handler(
+    State(state): State<Arc<AppState>>,
+    req: axum::extract::Request,
+) -> impl IntoResponse {
+    state.mcp_service.handle(req).await
 }
 
 async fn list_projects(State(state): State<Arc<AppState>>) -> Result<Json<Vec<Project>>, StatusCode> {

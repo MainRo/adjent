@@ -1,21 +1,39 @@
+# Model Context Protocol (MCP)
 
 The MCP server is implemented with the [rmcp](https://crates.io/crates/rmcp) crate.
+It is exposed on the `/mcp` route of the server (started alongside the main HTTP server).
 
-It is exposed on the /mcp route of the server. So it is started at the same time than the HTTP server.
-The MCP server expose resources for the current round of the current task.
+## Context & Scoping
 
-When started, agent determines the project, and task with these environment variables:
+The MCP server uses HTTP headers to scope all tool operations to a specific project, task, and round.
+The client (agent) is configured by the manager to provide these headers in every request:
 
-- ADJENT_PROJECT_ID
-- ADJENT_ACTION_ID
+- `X-Adjent-ProjectId`: The ID of the project.
+- `X-Adjent-ActionId`: The ID of the current action (which resolves to a task and round).
 
-These are provided by the manager to the agent for each task execution.
-The agent is configured to provide these two values as HTTP headers in the requests:
+## Tools
 
-- X-Adjent-ProjectId
-- X-Adjent-ActionId
+Instead of static resources, the server provides a set of tools for dynamic artifact interaction:
 
-This allows the MCP server to expose only the resources of the round:
+### `list_artifacts`
+Lists files in a specific artifact directory.
+- **Parameters**: `type` ("inputs", "outputs", or "logs")
+- **Returns**: A newline-separated list of filenames.
 
-- inputs resources, are read-only resources
-- logs and outputs and read-write resources. The agent can create new resources here.
+### `read_artifact`
+Reads the content of a specific artifact file.
+- **Parameters**: `type`, `filename`
+- **Returns**: The raw text content of the file.
+
+### `write_artifact`
+Writes or updates an artifact file.
+- **Parameters**: `type`, `filename`, `content`
+- **Returns**: A success message.
+
+## Transport
+
+The server uses the standard MCP SSE transport:
+- **SSE Endpoint**: `GET /mcp`
+- **Message Endpoint**: `POST /mcp`
+
+The session is established upon the first `initialize` request.

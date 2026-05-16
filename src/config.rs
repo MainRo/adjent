@@ -80,19 +80,30 @@ mod tests {
     }
 
     #[test]
-    fn test_get_adjent_home() {
+    fn test_get_adjent_home_env() {
+        // Grouping environment-modifying tests to avoid parallel race conditions
         unsafe {
-            std::env::set_var("ADJENT_HOME", "/tmp");
-        }
-        assert!(get_adjent_home().to_str().unwrap().contains("tmp"));
-    }
+            let original_adjent_home = std::env::var("ADJENT_HOME");
+            let original_home = std::env::var("HOME");
 
-    #[test]
-    fn test_get_adjent_home_default() {
-        unsafe {
+            // Test with ADJENT_HOME set
+            std::env::set_var("ADJENT_HOME", "/tmp");
+            assert!(get_adjent_home().to_str().unwrap().contains("tmp"));
+
+            // Test default behavior (fallback to HOME)
             std::env::remove_var("ADJENT_HOME");
             std::env::set_var("HOME", "/home/user");
+            assert_eq!(get_adjent_home(), PathBuf::from("/home/user/.adjent"));
+
+            // Restore original environment
+            if let Ok(val) = original_adjent_home {
+                std::env::set_var("ADJENT_HOME", val);
+            } else {
+                std::env::remove_var("ADJENT_HOME");
+            }
+            if let Ok(val) = original_home {
+                std::env::set_var("HOME", val);
+            }
         }
-        assert_eq!(get_adjent_home(), PathBuf::from("/home/user/.adjent"));
     }
 }

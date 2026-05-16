@@ -3,6 +3,7 @@ use std::fs;
 use anyhow::Result;
 use crate::config::Context;
 use serde::{Deserialize, Serialize};
+use schemars::JsonSchema;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -12,6 +13,24 @@ pub enum ActionStatus {
     Running,
     Completed,
     Failed,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ArtifactType {
+    Inputs,
+    Outputs,
+    Logs,
+}
+
+impl ArtifactType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ArtifactType::Inputs => "inputs",
+            ArtifactType::Outputs => "outputs",
+            ArtifactType::Logs => "logs",
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -237,12 +256,63 @@ impl LocalStorage {
         fs::write(path, content)?;
         Ok(())
     }
+
+    pub fn get_artifact_path(&self, project_id: &str, task_id: &str, round_id: &str, artifact_type: ArtifactType, filename: &str) -> PathBuf {
+        self.rounds_dir(project_id, task_id).join(round_id).join(artifact_type.as_str()).join(filename)
+    }
+
+    pub fn list_artifacts(&self, project_id: &str, task_id: &str, round_id: &str, artifact_type: ArtifactType) -> Result<Vec<String>> {
+        let path = self.rounds_dir(project_id, task_id).join(round_id).join(artifact_type.as_str());
+        if !path.exists() {
+            return Ok(vec![]);
+        }
+        let mut artifacts = vec![];
+        for entry in fs::read_dir(path)? {
+            let entry = entry?;
+            if entry.file_type()?.is_file() {
+                if let Some(name) = entry.file_name().to_str() {
+                    artifacts.push(name.to_string());
+                }
+            }
+        }
+        Ok(artifacts)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn test_list_artifacts() -> Result<()> {
+        let dir = tempdir()?;
+        let storage = LocalStorage::new(dir.path().to_path_buf());
+        storage.create_project("p1")?;
+        storage.create_task("p1", "t1")?; // creates round 0
+        
+        let r0_dir = storage.rounds_dir("p1", "t1").join("0");
+        fs::write(r0_dir.join("inputs").join("test.txt"), "hello")?;
+        
+        let artifacts = storage.list_artifacts("p1", "t1", "0", ArtifactType::Inputs)?;
+        assert!(artifacts.contains(&"test.txt".to_string()));
+        assert!(artifacts.contains(&"instructions.md".to_string()));
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_artifact_path() -> Result<()> {
+        let dir = tempdir()?;
+        let storage = LocalStorage::new(dir.path().to_path_buf());
+        let path = storage.get_artifact_path("p1", "t1", "0", ArtifactType::Outputs, "result.json");
+        assert!(path.to_string_lossy().contains("p1"));
+        assert!(path.to_string_lossy().contains("t1"));
+        assert!(path.to_string_lossy().contains("0"));
+        assert!(path.to_string_lossy().contains("outputs"));
+        assert!(path.to_string_lossy().contains("result.json"));
+        Ok(())
+    }
 
     #[test]
     fn test_list_projects_empty() -> Result<()> {
