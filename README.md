@@ -17,36 +17,43 @@ The following diagram illustrates a typical iterative session where an agent mov
 ```mermaid
 graph TD
     subgraph R0 [Round 0: Refinement]
-        R0I[inputs: instructions.md] -->|Read| AG0[AI Agent]
-        AG0 -->|Write| R0O[outputs: plan.md]
-        AG0 -->|Write| R0L[logs]
+        inputsR0[inputs]
+        outputsR0[outputs]
+        logsR0[logs]
+        inputsR0 -->|instructions.md| AG0[AI Agent]
+        AG0 -->|plan.md| outputsR0
+        AG0 -->|session.md| logsR0
     end
 
-    R0I -.->|Copied| R1I
-    R0O -.->|Copied| R1I
+    inputsR0 -.->|Copied| inputsR1
+    outputsR0 -.->|Copied| inputsR1
 
     subgraph R1 [Round 1: Implementation]
-        File@{ shape: doc, label: "code.rs" }
-        R1I["inputs: rounds 0 input|output + new instructions.md"] -->|Read| AG1[AI Agent]
-        AG1 -->|Write| R1O[outputs: execution.md]
-        AG1 -->|Write| File
-        AG1 -->|Write| R1L[logs]
+        inputsR1[inputs]
+        outputsR1[outputs]
+        logsR1[logs]
+        File@{ shape: doc, label: "work environment"}
+        inputsR1 -->|instructions.md| AG1[AI Agent]
+        inputsR1 -->|plan.md| AG1[AI Agent]
+        AG1 -->|execution.md| outputsR1
+        AG1 -->|code.rs| File
+        AG1 -->|logs| logsR1
     end
 
-    R1I -.->|Copied| R2I
-    R1O -.->|Copied| R2I
+    inputsR1 -.->|Copied| inputsR2
+    outputsR1 -.->|Copied| inputsR2
 
     subgraph R2 [Round 2: Fix / Polish]
-        FileR2@{ shape: doc, label: "code.rs" }
-        R2I["inputs: rounds 1 input|output + new instructions.md"] -->|Read| AG2[AI Agent]
-        AG2 -->|Write| R2O[outputs: execution.md]
-        AG2 -->|Write| FileR2
-        AG2 -->|Write| R2L[logs]
+        inputsR2[inputs]
+        outputsR2[outputs]
+        logsR2[logs]
+        FileR2@{ shape: doc, label: "work environment" }
+        inputsR2 -->|instructions.md| AG2[AI Agent]
+        inputsR2 -->|plan.md| AG2[AI Agent]
+        AG2 -->|execution.md| outputsR2
+        AG2 -->|code.rs| FileR2
+        AG2 -->|logs| logsR2
     end
-
-    style R0 fill:#f5f5f5,stroke:#333,stroke-width:2px
-    style R1 fill:#e1f5fe,stroke:#01579b,stroke-width:2px
-    style R2 fill:#fff3e0,stroke:#e65100,stroke-width:2px
 ```
 
 ## Getting Started
