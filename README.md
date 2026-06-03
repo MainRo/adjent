@@ -118,6 +118,10 @@ For `gemini-cli`, you can configure the MCP server in your `settings.json` or eq
   "mcpServers": {
     "adjent": {
       "url": "http://localhost:8080/mcp",
+      "env": {
+        "ADJENT_PROJECT_ID": "${ADJENT_PROJECT_ID}",
+        "ADJENT_ACTION_ID": "${ADJENT_ACTION_ID}"
+      },
       "headers": {
         "X-Adjent-ProjectId": "${ADJENT_PROJECT_ID}",
         "X-Adjent-ActionId": "${ADJENT_ACTION_ID}"

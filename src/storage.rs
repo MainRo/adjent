@@ -44,6 +44,25 @@ pub struct Action {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
+pub trait Storage: Send + Sync {
+    fn save_action(&self, project_id: &str, action: &Action) -> Result<()>;
+    fn get_action(&self, project_id: &str, action_id: &str) -> Result<Option<Action>>;
+    fn update_action_status(&self, project_id: &str, action_id: &str, status: ActionStatus) -> Result<()>;
+    fn get_and_assign_next_action(&self, project_id: &str) -> Result<Option<Action>>;
+    fn list_rounds(&self, project_id: &str, task_id: &str) -> Result<Vec<String>>;
+    fn create_round_dir(&self, project_id: &str, task_id: &str, round_id: &str) -> Result<()>;
+    fn list_projects(&self) -> Result<Vec<String>>;
+    fn create_project(&self, id: &str) -> Result<()>;
+    fn list_tasks(&self, project_id: &str) -> Result<Vec<String>>;
+    fn create_task(&self, project_id: &str, task_id: &str) -> Result<()>;
+    fn bump_round(&self, project_id: &str, task_id: &str, from_r_id: Option<String>) -> Result<String>;
+    fn get_active_context(&self) -> Result<Context>;
+    fn save_active_context(&self, ctx: &Context) -> Result<()>;
+    fn list_artifacts(&self, project_id: &str, task_id: &str, round_id: &str, artifact_type: ArtifactType) -> Result<Vec<String>>;
+    fn read_artifact(&self, project_id: &str, task_id: &str, round_id: &str, artifact_type: ArtifactType, filename: &str) -> Result<String>;
+    fn write_artifact(&self, project_id: &str, task_id: &str, round_id: &str, artifact_type: ArtifactType, filename: &str, content: String) -> Result<()>;
+}
+
 pub struct LocalStorage {
     root: PathBuf,
 }
@@ -69,7 +88,28 @@ impl LocalStorage {
         self.tasks_dir(project_id).join(task_id).join("rounds")
     }
 
-    pub fn save_action(&self, project_id: &str, action: &Action) -> Result<()> {
+    fn copy_artifacts(&self, src: &std::path::Path, dst: &std::path::Path) -> Result<()> {
+        if !src.exists() {
+            return Ok(());
+        }
+        for entry in fs::read_dir(src)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() {
+                let name = entry.file_name();
+                fs::copy(&path, dst.join(name))?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn get_artifact_path(&self, project_id: &str, task_id: &str, round_id: &str, artifact_type: ArtifactType, filename: &str) -> PathBuf {
+        self.rounds_dir(project_id, task_id).join(round_id).join(artifact_type.as_str()).join(filename)
+    }
+}
+
+impl Storage for LocalStorage {
+    fn save_action(&self, project_id: &str, action: &Action) -> Result<()> {
         let dir = self.actions_dir(project_id);
         fs::create_dir_all(&dir)?;
         let path = dir.join(format!("{}.json", action.id));
@@ -78,7 +118,7 @@ impl LocalStorage {
         Ok(())
     }
 
-    pub fn get_action(&self, project_id: &str, action_id: &str) -> Result<Option<Action>> {
+    fn get_action(&self, project_id: &str, action_id: &str) -> Result<Option<Action>> {
         let path = self.actions_dir(project_id).join(format!("{}.json", action_id));
         if !path.exists() {
             return Ok(None);
@@ -88,7 +128,7 @@ impl LocalStorage {
         Ok(Some(action))
     }
 
-    pub fn update_action_status(&self, project_id: &str, action_id: &str, status: ActionStatus) -> Result<()> {
+    fn update_action_status(&self, project_id: &str, action_id: &str, status: ActionStatus) -> Result<()> {
         let mut action = self.get_action(project_id, action_id)?
             .ok_or_else(|| anyhow::anyhow!("Action not found"))?;
         action.status = status;
@@ -96,7 +136,7 @@ impl LocalStorage {
         Ok(())
     }
 
-    pub fn get_and_assign_next_action(&self, project_id: &str) -> Result<Option<Action>> {
+    fn get_and_assign_next_action(&self, project_id: &str) -> Result<Option<Action>> {
         let dir = self.actions_dir(project_id);
         if !dir.exists() {
             return Ok(None);
@@ -127,7 +167,7 @@ impl LocalStorage {
         Ok(None)
     }
 
-    pub fn list_rounds(&self, project_id: &str, task_id: &str) -> Result<Vec<String>> {
+    fn list_rounds(&self, project_id: &str, task_id: &str) -> Result<Vec<String>> {
         let path = self.rounds_dir(project_id, task_id);
         if !path.exists() {
             return Ok(vec![]);
@@ -144,7 +184,7 @@ impl LocalStorage {
         Ok(rounds)
     }
 
-    pub fn create_round_dir(&self, project_id: &str, task_id: &str, round_id: &str) -> Result<()> {
+    fn create_round_dir(&self, project_id: &str, task_id: &str, round_id: &str) -> Result<()> {
         let path = self.rounds_dir(project_id, task_id).join(round_id);
         fs::create_dir_all(path.join("inputs"))?;
         fs::create_dir_all(path.join("outputs"))?;
@@ -152,7 +192,7 @@ impl LocalStorage {
         Ok(())
     }
 
-    pub fn list_projects(&self) -> Result<Vec<String>> {
+    fn list_projects(&self) -> Result<Vec<String>> {
         let path = self.projects_dir();
         if !path.exists() {
             return Ok(vec![]);
@@ -170,13 +210,13 @@ impl LocalStorage {
         Ok(projects)
     }
 
-    pub fn create_project(&self, id: &str) -> Result<()> {
+    fn create_project(&self, id: &str) -> Result<()> {
         let path = self.projects_dir().join(id);
         fs::create_dir_all(path)?;
         Ok(())
     }
 
-    pub fn list_tasks(&self, project_id: &str) -> Result<Vec<String>> {
+    fn list_tasks(&self, project_id: &str) -> Result<Vec<String>> {
         let path = self.tasks_dir(project_id);
         if !path.exists() {
             return Ok(vec![]);
@@ -193,14 +233,14 @@ impl LocalStorage {
         Ok(tasks)
     }
 
-    pub fn create_task(&self, project_id: &str, task_id: &str) -> Result<()> {
+    fn create_task(&self, project_id: &str, task_id: &str) -> Result<()> {
         let path = self.tasks_dir(project_id).join(task_id);
         fs::create_dir_all(path)?;
         self.bump_round(project_id, task_id, None)?;
         Ok(())
     }
 
-    pub fn bump_round(&self, project_id: &str, task_id: &str, from_r_id: Option<String>) -> Result<String> {
+    fn bump_round(&self, project_id: &str, task_id: &str, from_r_id: Option<String>) -> Result<String> {
         let rounds = self.list_rounds(project_id, task_id)?;
         let src_id = from_r_id.or_else(|| {
             rounds.iter().filter_map(|s| s.parse::<u32>().ok()).max().map(|m| m.to_string())
@@ -225,22 +265,7 @@ impl LocalStorage {
         Ok(next_id)
     }
 
-    fn copy_artifacts(&self, src: &std::path::Path, dst: &std::path::Path) -> Result<()> {
-        if !src.exists() {
-            return Ok(());
-        }
-        for entry in fs::read_dir(src)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_file() {
-                let name = entry.file_name();
-                fs::copy(&path, dst.join(name))?;
-            }
-        }
-        Ok(())
-    }
-
-    pub fn get_active_context(&self) -> Result<Context> {
+    fn get_active_context(&self) -> Result<Context> {
         let path = self.root.join("active.json");
         if !path.exists() {
             return Ok(Context::default());
@@ -250,18 +275,14 @@ impl LocalStorage {
         Ok(ctx)
     }
 
-    pub fn save_active_context(&self, ctx: &Context) -> Result<()> {
+    fn save_active_context(&self, ctx: &Context) -> Result<()> {
         let path = self.root.join("active.json");
         let content = serde_json::to_string_pretty(ctx)?;
         fs::write(path, content)?;
         Ok(())
     }
 
-    pub fn get_artifact_path(&self, project_id: &str, task_id: &str, round_id: &str, artifact_type: ArtifactType, filename: &str) -> PathBuf {
-        self.rounds_dir(project_id, task_id).join(round_id).join(artifact_type.as_str()).join(filename)
-    }
-
-    pub fn list_artifacts(&self, project_id: &str, task_id: &str, round_id: &str, artifact_type: ArtifactType) -> Result<Vec<String>> {
+    fn list_artifacts(&self, project_id: &str, task_id: &str, round_id: &str, artifact_type: ArtifactType) -> Result<Vec<String>> {
         let path = self.rounds_dir(project_id, task_id).join(round_id).join(artifact_type.as_str());
         if !path.exists() {
             return Ok(vec![]);
@@ -276,6 +297,23 @@ impl LocalStorage {
             }
         }
         Ok(artifacts)
+    }
+
+    fn read_artifact(&self, project_id: &str, task_id: &str, round_id: &str, artifact_type: ArtifactType, filename: &str) -> Result<String> {
+        let path = self.get_artifact_path(project_id, task_id, round_id, artifact_type, filename);
+        if !path.exists() {
+            return Err(anyhow::anyhow!("Artifact not found: {}", filename));
+        }
+        Ok(fs::read_to_string(path)?)
+    }
+
+    fn write_artifact(&self, project_id: &str, task_id: &str, round_id: &str, artifact_type: ArtifactType, filename: &str, content: String) -> Result<()> {
+        let path = self.get_artifact_path(project_id, task_id, round_id, artifact_type, filename);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(path, content)?;
+        Ok(())
     }
 }
 

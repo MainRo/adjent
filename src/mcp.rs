@@ -1,7 +1,7 @@
-use crate::storage::{LocalStorage, ArtifactType};
+use crate::storage::{Storage, ArtifactType};
 use serde::Deserialize;
 use schemars::JsonSchema;
-use rmcp::{tool, tool_router, ErrorData, RoleServer};
+use rmcp::{tool, tool_router, tool_handler, ErrorData, RoleServer};
 use rmcp::model::{CallToolResult, Content};
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::service::RequestContext;
@@ -14,7 +14,7 @@ pub struct McpSessionContext {
 }
 
 pub struct AdjentMcpServer {
-    pub storage: Arc<LocalStorage>,
+    pub storage: Arc<dyn Storage>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -89,20 +89,13 @@ impl AdjentMcpServer {
     pub async fn read_artifact(&self, context: RequestContext<RoleServer>, Parameters(params): Parameters<ReadArtifactParams>) -> Result<CallToolResult, ErrorData> {
         let ctx = self.resolve_context(&context)?;
         
-        let path = self.storage.get_artifact_path(
+        let content = self.storage.read_artifact(
             &ctx.project_id,
             &ctx.task_id,
             &ctx.round_id,
             params.artifact_type,
             &params.filename
-        );
-
-        if !path.exists() {
-            return Err(ErrorData::invalid_params(format!("File not found: {}", params.filename), None));
-        }
-
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+        ).map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
         
         Ok(CallToolResult::success(vec![Content::text(content)]))
     }
@@ -111,25 +104,20 @@ impl AdjentMcpServer {
     pub async fn write_artifact(&self, context: RequestContext<RoleServer>, Parameters(params): Parameters<WriteArtifactParams>) -> Result<CallToolResult, ErrorData> {
         let ctx = self.resolve_context(&context)?;
         
-        let path = self.storage.get_artifact_path(
+        self.storage.write_artifact(
             &ctx.project_id,
             &ctx.task_id,
             &ctx.round_id,
             params.artifact_type,
-            &params.filename
-        );
-
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-        }
-
-        std::fs::write(path, params.content)
-            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+            &params.filename,
+            params.content
+        ).map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
         
         Ok(CallToolResult::success(vec![Content::text(format!("Successfully wrote {}", params.filename))]))
     }
 }
 
+#[tool_handler]
 impl rmcp::ServerHandler for AdjentMcpServer {}
 
 #[cfg(test)]
@@ -146,7 +134,7 @@ mod tests {
     async fn test_tool_logic() -> anyhow::Result<()> {
         let dir = tempdir()?;
         let storage = Arc::new(LocalStorage::new(dir.path().to_path_buf()));
-        let server = AdjentMcpServer { storage: storage.clone() };
+        let server = AdjentMcpServer { storage: storage.clone() as Arc<dyn Storage> };
 
         // Setup a project, task, and action
         storage.create_project("p1")?;
@@ -168,7 +156,7 @@ mod tests {
             notification: ClientNotification::InitializedNotification(Default::default()),
         });
         let (transport, _) = OneshotTransport::<RoleServer>::new(dummy_msg);
-        let running = serve_directly(AdjentMcpServer { storage: storage.clone() }, transport, None);
+        let running = serve_directly(AdjentMcpServer { storage: storage.clone() as Arc<dyn Storage> }, transport, None);
         let peer = running.peer().clone();
         
         let mut context = RequestContext::new(NumberOrString::Number(1), peer);

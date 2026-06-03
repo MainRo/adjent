@@ -9,8 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tracing::{info, error};
-pub use crate::storage::{LocalStorage, Action, ActionStatus};
-use crate::config::get_adjent_home;
+pub use crate::storage::{Storage, Action, ActionStatus};
 use chrono::Local;
 use crate::mcp::AdjentMcpServer;
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
@@ -59,13 +58,11 @@ pub struct ActionStatusUpdate {
 }
 
 pub struct AppState {
-    pub storage: Arc<LocalStorage>,
+    pub storage: Arc<dyn Storage>,
     pub mcp_service: StreamableHttpService<AdjentMcpServer, LocalSessionManager>,
 }
 
-pub async fn start(port: u16) -> Result<(), Box<dyn std::error::Error>> {
-    let home = get_adjent_home();
-    let storage = Arc::new(LocalStorage::new(home));
+pub async fn start(storage: Arc<dyn Storage>, port: u16) -> Result<(), Box<dyn std::error::Error>> {
     let session_manager = Arc::new(LocalSessionManager::default());
     
     let storage_clone = storage.clone();

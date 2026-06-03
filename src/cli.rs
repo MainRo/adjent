@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use reqwest::Client;
 use crate::config::{get_adjent_home, detect_context, Context};
-use crate::storage::LocalStorage;
+use crate::storage::{Storage, LocalStorage};
 use crate::server::{
     Project, ProjectCreate,
     Task, TaskCreate,
@@ -10,6 +10,7 @@ use crate::server::{
 };
 use anyhow::Result;
 use tracing::info;
+use std::sync::Arc;
 
 #[derive(Parser)]
 #[command(name = "adjent", about = "Adjent: An orchestrator for agents with human in the loop")]
@@ -109,7 +110,7 @@ pub struct ManageArgs {
 
 pub struct CliContext {
     pub client: Client,
-    pub storage: LocalStorage,
+    pub storage: Arc<dyn Storage>,
     pub home: std::path::PathBuf,
 }
 
@@ -118,7 +119,7 @@ impl CliContext {
         let home = get_adjent_home();
         Self {
             client: Client::new(),
-            storage: LocalStorage::new(home.clone()),
+            storage: Arc::new(LocalStorage::new(home.clone())) as Arc<dyn Storage>,
             home,
         }
     }
@@ -254,7 +255,7 @@ pub async fn run() -> Result<()> {
         Command::Server(args) => match args.command {
             ServerCommand::Start { port } => {
                 println!("Starting server on port: {}", port);
-                crate::server::start(port).await.map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                crate::server::start(ctx.storage.clone(), port).await.map_err(|e| anyhow::anyhow!(e.to_string()))?;
             },
             ServerCommand::Stop => println!("Stopping server..."),
         },
