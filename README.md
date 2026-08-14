@@ -92,13 +92,22 @@ When the manager spawns an agent, it sets the `ADJENT_PROJECT_ID` and `ADJENT_AC
 
 ### 1. Claude Code
 
-To use Adjent with Claude Code, add it as an MCP server in your configuration:
+To use Adjent with Claude Code, either use this command:
+
+```bash
+claude mcp add -s user \
+--transport http adjent http://localhost:8080/mcp \
+--header 'X-Adjent-ProjectId: ${ADJENT_PROJECT_ID}' \
+--header 'X-Adjent-ActionId: ${ADJENT_ACTION_ID}'
+```
+
+Or add it as an MCP server in your configuration (~/.claude.json):
 
 ```json
 {
   "mcpServers": {
     "adjent": {
-      "type": "sse",
+      "type": "http",
       "url": "http://localhost:8080/mcp",
       "headers": {
         "X-Adjent-ProjectId": "${ADJENT_PROJECT_ID}",
@@ -109,19 +118,15 @@ To use Adjent with Claude Code, add it as an MCP server in your configuration:
 }
 ```
 
-### 2. Gemini CLI
+### 2. Antigravity CLI
 
-For `gemini-cli`, you can configure the MCP server in your `settings.json` or equivalent config file:
+For `agy`, you can configure the MCP server in `~/.gemini/config/mcp_config.json`:
 
 ```json
 {
   "mcpServers": {
     "adjent": {
-      "url": "http://localhost:8080/mcp",
-      "env": {
-        "ADJENT_PROJECT_ID": "${ADJENT_PROJECT_ID}",
-        "ADJENT_ACTION_ID": "${ADJENT_ACTION_ID}"
-      },
+      "serverUrl": "http://localhost:8080/mcp",
       "headers": {
         "X-Adjent-ProjectId": "${ADJENT_PROJECT_ID}",
         "X-Adjent-ActionId": "${ADJENT_ACTION_ID}"
